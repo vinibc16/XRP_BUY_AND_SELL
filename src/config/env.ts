@@ -9,4 +9,5 @@ export const config = {
   DEBUG: process.env.DEBUG, // Debug flag for logging or development
   AMOUNT_XRP: process.env.AMOUNT_XRP, // Amount of XRP (Ripple cryptocurrency) to handle
   HTTP_URL: process.env.HTTP_URL, // HTTP URL for API requests or communication
+  MAIN_WALLET: process.env.MAIN_WALLET
 };

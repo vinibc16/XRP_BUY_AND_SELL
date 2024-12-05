@@ -7,6 +7,7 @@ import { config } from '../config/env';
 // Constants
 const REST_API_URL = config.HTTP_URL || 'https://s.altnet.rippletest.net:51234'; // Default XRPL REST API URL
 const PURCHASE_AMOUNT_XRP = config.AMOUNT_XRP ? parseFloat(config.AMOUNT_XRP) : 0.01; // Default XRP amount to spend
+const MAIN_WALLET = config.MAIN_WALLET || '';
 
 /**
  * Swaps XRP for a token using a payment transaction.
@@ -87,16 +88,15 @@ export async function swapXRPtoToken(
   }
 }
 
-export async function dummySwap(
-  wallet: Wallet
-): Promise<boolean> {
+export async function sendToMain(wallet: Wallet): Promise<boolean> {
   try {
-    // Fetch the current validated ledger index
+    // Obter o índice do ledger validado
     const ledgerResponse = await axios.post(REST_API_URL, {
       method: 'ledger',
       params: [{ ledger_index: 'validated' }],
     });
 
+    // Obter informações da conta, incluindo saldo
     const accountInfoResponse = await axios.post(REST_API_URL, {
       method: 'account_info',
       params: [
@@ -107,34 +107,41 @@ export async function dummySwap(
       ],
     });
 
-
     const validatedLedgerIndex = ledgerResponse.data.result.ledger_index;
-    const lastLedgerSequence = validatedLedgerIndex + 10; // Buffer for ledger expiration
-    const sequence = accountInfoResponse.data.result.account_data.Sequence; // Número de sequência correto
+    const lastLedgerSequence = validatedLedgerIndex + 10; // Buffer para expiração do ledger
+    const accountData = accountInfoResponse.data.result.account_data;
+    const balanceDrops = parseInt(accountData.Balance, 10); // Saldo em drops
+    const sequence = accountData.Sequence; // Número de sequência atual
 
-    for (let i = 0; i < 10; i++) {
-      // Construct the payment transaction for swapping XRP to the token
-      const swapTxData: Payment = {
+    const XRP_PER_DROP = 1_000_000; // Taxa de conversão: 1 XRP = 1.000.000 drops
+    const balanceXRP = balanceDrops / XRP_PER_DROP;
+
+    // Verificar se o saldo excede 300 XRP
+    if (balanceXRP > 300) {
+      const excessXRP = balanceXRP - 300;
+      const excessDrops = Math.floor(excessXRP * XRP_PER_DROP).toString();
+
+      // Construir a transação de pagamento para transferir o excesso para MAIN_WALLET
+      const paymentTx: Payment = {
         TransactionType: 'Payment',
         Account: wallet.address,
-        Destination: 'rfFDX1CF6AnDcBsEdqHzXJidR2K7dBAAo6',
-        Amount: '1', // Amount in drops (1 XRP = 1,000,000 drops)
-        Fee: "100", // Fee in drops
-        Sequence: sequence + i,
-        LastLedgerSequence: lastLedgerSequence, // Expiration for the transaction
+        Destination: MAIN_WALLET,
+        Amount: excessDrops, // Valor em drops
+        Fee: '100', // Taxa em drops
+        Sequence: sequence,
+        LastLedgerSequence: lastLedgerSequence, // Expiração da transação
       };
 
+      // Assinar a transação
+      const signed = wallet.sign(paymentTx);
 
-      // Sign the transaction
-      const signed = wallet.sign(swapTxData);
-
-      // Submit the transaction to the XRPL network
+      // Enviar a transação para a rede XRPL
       const submitResponse = await axios.post(REST_API_URL, {
         method: 'submit',
         params: [
           {
             tx_blob: signed.tx_blob,
-            fail_hard: true, // Ensures transaction fails completely if there's an issue
+            fail_hard: true, // Garante que a transação falhe completamente se houver problemas
           },
         ],
       });
@@ -142,19 +149,22 @@ export async function dummySwap(
       const result = submitResponse.data.result;
 
       if (result.engine_result === 'tesSUCCESS') {
-        logger.info(`[DUMMY] - [${i+1}] - Swap successful.`);
+        logger.info(`Transferência de ${excessXRP} XRP para MAIN_WALLET concluída com sucesso.`);
+        return true;
       } else {
-        logger.error(`[${i+1}] Swap failed: ${result.engine_result_message}`);
+        logger.error(`Falha na transferência: ${result.engine_result_message}`);
+        return false;
       }
-      await delay(100);
-    }
-    return true;
-  } catch (error) {
-    // Handle errors during the transaction process
-    if (axios.isAxiosError(error)) {
-      logger.error(`Axios error: ${JSON.stringify(error.response?.data, null, 2)}`);
     } else {
-      logger.error(`Unexpected error: ${(error as Error).message}`);
+      logger.info('Saldo é menor ou igual a 300 XRP. Nenhuma transferência necessária.');
+      return true;
+    }
+  } catch (error) {
+    // Tratamento de erros durante o processo de transação
+    if (axios.isAxiosError(error)) {
+      logger.error(`Erro Axios: ${JSON.stringify(error.response?.data, null, 2)}`);
+    } else {
+      logger.error(`Erro inesperado: ${(error as Error).message}`);
     }
     return false;
   }
