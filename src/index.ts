@@ -13,9 +13,6 @@ const wssUrl = config.WSS_URL;
 const httpUrl = config.HTTP_URL || '';
 const secrect = config.SECRET || '';
 
-// Control flag for reconnection attempts
-let isReconnecting = false;
-
 /**
  * Main function to initialize the XRP ledger operations.
  */
