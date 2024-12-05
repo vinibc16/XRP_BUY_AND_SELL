@@ -1,17 +1,13 @@
-import { Client, Wallet } from 'xrpl';
+import { Client } from 'xrpl';
 import { logger } from './logger';
 import { cancelSpecificTrustLine, setTrustLine } from '../xrpl/trustlines';
-import { dummySwap, swapTokentoXRP, swapTokentoXRPWithTicket, swapTokentoXRPWS, swapXRPtoToken, swapXRPtoTokenWS } from '../xrpl/swap';
+import { swapXRPtoToken } from '../xrpl/swap';
 import { delay, hexToAscii } from '../xrpl/helpers';
 import { getTicketFromCache, updateTicketCache } from '../xrpl/ticket';
-import { config } from '../config/env';
-import axios from 'axios';
 
 // Constants to track processed trust lines and monitored accounts
 const processedTrustLines: Set<string> = new Set();
 const monitorAccounts: Set<string> = new Set();
-const REST_API_URL = config.HTTP_URL || 'https://s.altnet.rippletest.net:51234'; // Default XRPL REST API URL
-
 
 // Function to handle the token-buying process based on specific transactions
 export async function buyTokens(client: Client, wallet: any, transaction: any) {
@@ -67,8 +63,6 @@ export async function buyTokens(client: Client, wallet: any, transaction: any) {
         logger.log(`ticket: ${ticketSequence1}`);
         // Set up the trust line
         await setTrustLine(client, wallet, currency, issuer);
-        console.log(`Finished TRUST LINE`)
-        console.log(`start buy`)
         if (ticketSequence1) {          
           for (let i = 0; i < 30; i++) {
             swapXRPtoToken(client, wallet, currency, issuer, ticketSequence1, i+1);      

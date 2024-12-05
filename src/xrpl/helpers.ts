@@ -2,11 +2,6 @@ import { Client } from "xrpl";
 import { logger } from "../utils/logger";
 import axios from 'axios';
 import * as toml from 'toml';
-import { config } from "../config/env";
-
-// Constants
-const wssUrl = config.WSS_URL;
-const httpUrl = config.HTTP_URL || '';
 
 /**
  * Extracts the transaction result from transaction metadata.

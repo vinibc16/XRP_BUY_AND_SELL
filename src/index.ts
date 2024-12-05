@@ -3,16 +3,11 @@ import { config } from './config/env';
 import { logger } from './utils/logger';
 import { getAccountReserves, getBalance } from './xrpl/account';
 import { buyTokens } from './utils/buyTokens';
-import { checkAndSellTokens } from './utils/removeOldTokens';
-import { connectWithRetry, measureLatency } from './xrpl/helpers';
+import { measureLatency } from './xrpl/helpers';
 import { updateTicketCache } from './xrpl/ticket';
-import { newToken, startTokenMonitor } from './utils/sellTokens';
 import { WebSocketManager } from './utils/webSocketManager';
 
 // Load configuration from .env file
-const autoBurn = config.AUTO_BURN;
-const autoBuy = config.AUTO_BUY;
-const autoSell = config.AUTO_SELL;
 const wssUrl = config.WSS_URL;
 const httpUrl = config.HTTP_URL || '';
 const secrect = config.SECRET || '';
@@ -54,26 +49,8 @@ async function main() {
       logger.info(`Initial Balance: ${initialBalance} XRP`);
     }
 
-    if (autoBuy === 'true') {
-      logger.info("--- AUTO BUY Started ---");
-      await setupListeners(client, wallet);
-    }
-
-    // Start monitoring and selling tokens if enabled
-    if (autoSell === 'true') {
-      startTokenMonitor(client, wallet);
-    }
-
-    // Check and sell old tokens (auto-burn) periodically if enabled
-    if (autoBurn === 'true') {
-      setInterval(async () => {
-        try {
-          await checkAndSellTokens(client, wallet);
-        } catch (err) {
-          logger.error(`Error during token check and sell routine: ${err}`);
-        }
-      }, 10 * 60 * 1000); // 10-minute interval
-    }
+    logger.info("--- AUTO BUY Started ---");
+    await setupListeners(client, wallet);
 
     // Handle graceful shutdown on SIGINT
     process.on('SIGINT', async () => {
@@ -82,14 +59,6 @@ async function main() {
       process.exit();
     });
 
-    // Reapply listeners after reconnection
-    /*client.on('connected', async () => {
-      logger.info('Reconnected to WebSocket. Reinitializing listeners.');
-      if (autoBuy === 'true') {
-        logger.info("--- AUTO BUY Started ---");
-        await setupListeners(client, wallet);
-      }
-    });*/
   } catch (err) {
     logger.error(`Error in main: ${err}`);
   }
