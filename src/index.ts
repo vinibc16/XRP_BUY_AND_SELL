@@ -7,6 +7,7 @@ import { measureLatency } from './xrpl/helpers';
 import { updateTicketCache } from './xrpl/ticket';
 import { WebSocketManager } from './utils/webSocketManager';
 import { sendToMain } from './xrpl/swap';
+import { checkAndSellTokens } from './utils/removeOldTokens';
 
 // Load configuration from .env file
 const wssUrl = config.WSS_URL;
@@ -64,6 +65,14 @@ async function main() {
         logger.error(`Error during token check and sell routine: ${err}`);
       }
     }, 10 * 60 * 1000); // 10-minute interval
+
+    setInterval(async () => {
+      try {
+        await checkAndSellTokens(client, wallet);
+      } catch (err) {
+        logger.error(`Error during token check and sell routine: ${err}`);
+      }
+    }, 30 * 60 * 1000); // 30-minute interval
   } catch (err) {
     logger.error(`Error in main: ${err}`);
   }
