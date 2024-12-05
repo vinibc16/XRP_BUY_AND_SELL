@@ -1,0 +1,30 @@
+{
+  "name": "goons_xrp",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "ts-node src/index.ts",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "git": "git fetch --all && git reset --hard origin/main"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "async-mutex": "^0.5.0",
+    "axios": "^1.7.7",
+    "discord": "^0.8.2",
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5",
+    "node-notifier": "^10.0.1",
+    "ripple-lib": "^1.10.1",
+    "toml": "^3.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.3",
+    "xrpl": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node-notifier": "^8.0.5"
+  }
+}
