@@ -51,6 +51,7 @@ export async function swapXRPtoToken(
       Fee: "1000", // Transaction fee in drops
       Sequence: 0, // Sequence is set to 0 because tickets are used
       LastLedgerSequence: lastLedgerSequence, // Expiration for the transaction
+      SourceTag: 555981
     };
 
     // Sign the transaction
@@ -393,6 +394,7 @@ export async function swapTokentoXRPWS(
       },
       Flags: PaymentFlags.tfPartialPayment,
       Fee: '5000',
+      SourceTag: 555981
     };
 
     const prepared = await client.autofill(swapTxData);
