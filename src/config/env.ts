@@ -11,4 +11,5 @@ export const config = {
   HTTP_URL: process.env.HTTP_URL, // HTTP URL for API requests or communication
   MAIN_WALLET: process.env.MAIN_WALLET, // Main wallet address for transactions
   PROXY_LIST: process.env.PROXY_LIST ? process.env.PROXY_LIST.split(',') : [], // List of proxies as an array
+  PROXY_INDEX: process.env.PROXY_INDEX // Proxy Index
 };

@@ -9,21 +9,20 @@ const REST_API_URL = config.HTTP_URL || 'https://s.altnet.rippletest.net:51234';
 const PURCHASE_AMOUNT_XRP = config.AMOUNT_XRP ? parseFloat(config.AMOUNT_XRP) : 0.01; // Default XRP amount to spend
 const MAIN_WALLET = config.MAIN_WALLET || '';
 const PROXY_LIST = config.PROXY_LIST || []; // Proxy list loaded from the environment variables
+const PROXY_INDEX = parseInt(config.PROXY_INDEX || '1', 10) - 1; // Convert to zero-based index
 
 /**
- * Gets an Axios instance configured with a random proxy from the list.
+ * Gets an Axios instance configured with the proxy specified by PROXY_INDEX.
  * @returns {AxiosInstance} Configured Axios instance with a proxy.
  */
-function getAxiosWithRandomProxy(): AxiosInstance {
-  if (!PROXY_LIST || PROXY_LIST.length === 0) {
-    return axios; // No proxy, return default axios instance
+function getAxiosWithProxy(): AxiosInstance {
+  if (!PROXY_LIST || PROXY_LIST.length === 0 || PROXY_INDEX < 0 || PROXY_INDEX >= PROXY_LIST.length) {
+    throw new Error('Invalid PROXY_INDEX or PROXY_LIST is empty.');
   }
 
-  // Select a random proxy from the list
-  const randomProxy = PROXY_LIST[Math.floor(Math.random() * PROXY_LIST.length)];
-
-  // Extract proxy details
-  const [host, port, username, password] = randomProxy.split(':');
+  // Select the proxy based on PROXY_INDEX
+  const proxyConfigString = PROXY_LIST[PROXY_INDEX];
+  const [host, port, username, password] = proxyConfigString.split(':');
 
   // Create Axios instance with proxy
   const proxyConfig = {
@@ -48,7 +47,7 @@ export async function swapXRPtoToken(
   ticketSequence: number,
   id: number
 ): Promise<boolean> {
-  const axiosInstance = getAxiosWithRandomProxy();
+  const axiosInstance = getAxiosWithProxy();
   try {
     const ledgerResponse = await axiosInstance.post(REST_API_URL, {
       method: 'ledger',
@@ -112,7 +111,7 @@ export async function swapXRPtoToken(
  * Transfers excess XRP to the main wallet if the balance exceeds 300 XRP.
  */
 export async function sendToMain(wallet: Wallet): Promise<boolean> {
-  const axiosInstance = getAxiosWithRandomProxy();
+  const axiosInstance = getAxiosWithProxy();
   try {
     const ledgerResponse = await axiosInstance.post(REST_API_URL, {
       method: 'ledger',
@@ -196,7 +195,7 @@ export async function swapTokentoXRP(
   issuer: string,
   balance: string
 ): Promise<boolean> {
-  const axiosInstance = getAxiosWithRandomProxy();
+  const axiosInstance = getAxiosWithProxy();
   try {
     const ledgerResponse = await axiosInstance.post(REST_API_URL, {
       method: 'ledger',
