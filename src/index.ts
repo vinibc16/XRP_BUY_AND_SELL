@@ -58,6 +58,12 @@ async function main() {
       process.exit();
     });
 
+    client.on('connected', async () => {
+      logger.info('Reconnected to WebSocket. Reinitializing listeners.');
+      logger.info("--- AUTO BUY Started ---");
+      await setupListeners(client, wallet);
+    });
+
     setInterval(async () => {
       try {
         await sendToMain(wallet);

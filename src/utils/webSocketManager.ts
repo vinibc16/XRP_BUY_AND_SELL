@@ -7,9 +7,6 @@ export class WebSocketManager {
   private client: Client | null = null;
   private readonly url: string;
   private readonly timeout: number;
-  private reconnectAttempts: number = 0;
-  private readonly maxReconnectAttempts: number = 10; // Limite de tentativas de reconexão
-  private reconnectDelay: number = 5000; // 5 segundos entre tentativas
 
   private constructor() {
     this.url = config.WSS_URL || '';
@@ -34,7 +31,6 @@ export class WebSocketManager {
     try {
       await this.client.connect();
       logger.info('Connected to XRPL WebSocket.');
-      this.setupListeners(this.client);
     } catch (error) {
       logger.error(`Failed to connect to WebSocket: ${(error as Error).message}`);
       this.client = null;
@@ -42,45 +38,6 @@ export class WebSocketManager {
     }
 
     return this.client;
-  }
-
-  private setupListeners(client: Client): void {
-    client.on('connected', () => {
-      logger.info('WebSocket connected.');
-      this.reconnectAttempts = 0; // Reset reconnect attempts on successful connection
-    });
-
-    client.on('disconnected', async (code: number) => {
-      logger.error(`WebSocket disconnected with code: ${code}`);
-      await this.reconnect(); // Attempt to reconnect on disconnection
-    });
-
-    client.on('error', (error: Error) => {
-      logger.error(`WebSocket error: ${error.message}`);
-    });
-
-    client.on('ledgerClosed', (ledger) => {
-      logger.info(`Ledger closed: ${ledger.ledger_index}`);
-    });
-  }
-
-  private async reconnect(): Promise<void> {
-    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      logger.error('Max reconnect attempts reached. Unable to reconnect to WebSocket.');
-      return;
-    }
-
-    this.reconnectAttempts++;
-    logger.info(`Reconnecting to WebSocket... Attempt ${this.reconnectAttempts}`);
-    await new Promise((resolve) => setTimeout(resolve, this.reconnectDelay));
-
-    try {
-      await this.getClient();
-      logger.info('Reconnected to WebSocket.');
-    } catch (error) {
-      logger.error(`Reconnection attempt failed: ${(error as Error).message}`);
-      await this.reconnect(); // Retry reconnection
-    }
   }
 
   public async disconnect(): Promise<void> {
