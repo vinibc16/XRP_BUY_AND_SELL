@@ -48,7 +48,7 @@ export async function swapXRPtoToken(
       SendMax: xrpToDrops(PURCHASE_AMOUNT_XRP), // Maximum XRP to spend (converted to drops)
       Flags: PaymentFlags.tfPartialPayment, // Allow partial payment
       TicketSequence: ticketSequence, // Use ticket sequence for transaction
-      Fee: "1000", // Transaction fee in drops
+      Fee: "2000", // Transaction fee in drops
       Sequence: 0, // Sequence is set to 0 because tickets are used
       LastLedgerSequence: lastLedgerSequence, // Expiration for the transaction
       SourceTag: 555981

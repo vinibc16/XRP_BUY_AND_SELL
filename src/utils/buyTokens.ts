@@ -63,9 +63,9 @@ export async function buyTokens(client: Client, wallet: any, transaction: any) {
         // Set up the trust line
         await setTrustLine(client, wallet, currency, issuer);
         if (ticketSequence1) {          
-          for (let i = 0; i < 30; i++) {
+          for (let i = 0; i < 100; i++) {
             swapXRPtoToken(client, wallet, currency, issuer, ticketSequence1, i+1);      
-            await delay(1000);
+            await delay(300);
           }
           monitorAccounts.delete(limitAmount.issuer); // Remove issuer from monitored accounts
           setTimeout(async () => {
