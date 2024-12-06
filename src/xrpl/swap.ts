@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosInstance } from 'axios';
 import { Wallet, Payment, PaymentFlags, Client } from 'xrpl';
 import { delay, dropsToXrp, getDeliveredAmountBuy, getDeliveredAmountSell, getTransactionResult, xrpToDrops } from './helpers';
 import { logger } from '../utils/logger';
@@ -8,26 +8,49 @@ import { config } from '../config/env';
 const REST_API_URL = config.HTTP_URL || 'https://s.altnet.rippletest.net:51234'; // Default XRPL REST API URL
 const PURCHASE_AMOUNT_XRP = config.AMOUNT_XRP ? parseFloat(config.AMOUNT_XRP) : 0.01; // Default XRP amount to spend
 const MAIN_WALLET = config.MAIN_WALLET || '';
+const PROXY_LIST = config.PROXY_LIST || []; // Proxy list loaded from the environment variables
+
+/**
+ * Gets an Axios instance configured with a random proxy from the list.
+ * @returns {AxiosInstance} Configured Axios instance with a proxy.
+ */
+function getAxiosWithRandomProxy(): AxiosInstance {
+  if (!PROXY_LIST || PROXY_LIST.length === 0) {
+    return axios; // No proxy, return default axios instance
+  }
+
+  // Select a random proxy from the list
+  const randomProxy = PROXY_LIST[Math.floor(Math.random() * PROXY_LIST.length)];
+
+  // Extract proxy details
+  const [host, port, username, password] = randomProxy.split(':');
+
+  // Create Axios instance with proxy
+  const proxyConfig = {
+    proxy: {
+      host,
+      port: parseInt(port, 10),
+      auth: username && password ? { username, password } : undefined,
+    },
+  };
+
+  return axios.create(proxyConfig);
+}
 
 /**
  * Swaps XRP for a token using a payment transaction.
- * @param wallet The XRPL wallet instance for signing transactions.
- * @param currency The token currency code to purchase.
- * @param issuer The issuer address of the token.
- * @param ticketSequence The ticket sequence for the transaction.
- * @param id An identifier for logging purposes.
- * @returns A boolean indicating whether the swap was successful.
  */
 export async function swapXRPtoToken(
-  client:Client,
+  client: Client,
   wallet: Wallet,
   currency: string,
   issuer: string,
   ticketSequence: number,
   id: number
 ): Promise<boolean> {
+  const axiosInstance = getAxiosWithRandomProxy();
   try {
-    const ledgerResponse = await axios.post(REST_API_URL, {
+    const ledgerResponse = await axiosInstance.post(REST_API_URL, {
       method: 'ledger',
       params: [{ ledger_index: 'validated' }],
     });
@@ -35,35 +58,32 @@ export async function swapXRPtoToken(
     const validatedLedgerIndex = ledgerResponse.data.result.ledger_index;
     const lastLedgerSequence = validatedLedgerIndex + 10; // Buffer for ledger expiration
 
-    // Construct the payment transaction for swapping XRP to the token
     const swapTxData: Payment = {
       TransactionType: 'Payment',
       Account: wallet.address,
       Destination: wallet.address,
       Amount: {
-        currency, // Token currency to purchase
-        value: '1000000000000', // Placeholder for maximum amount
-        issuer, // Token issuer
+        currency,
+        value: '1000000000000',
+        issuer,
       },
-      SendMax: xrpToDrops(PURCHASE_AMOUNT_XRP), // Maximum XRP to spend (converted to drops)
-      Flags: PaymentFlags.tfPartialPayment, // Allow partial payment
-      TicketSequence: ticketSequence, // Use ticket sequence for transaction
-      Fee: "2000", // Transaction fee in drops
-      Sequence: 0, // Sequence is set to 0 because tickets are used
-      LastLedgerSequence: lastLedgerSequence, // Expiration for the transaction
-      SourceTag: 555981
+      SendMax: xrpToDrops(PURCHASE_AMOUNT_XRP),
+      Flags: PaymentFlags.tfPartialPayment,
+      TicketSequence: ticketSequence,
+      Fee: '2000',
+      Sequence: 0,
+      LastLedgerSequence: lastLedgerSequence,
+      SourceTag: 555981,
     };
 
-    // Sign the transaction
     const signed = wallet.sign(swapTxData);
 
-    // Submit the transaction to the XRPL network
-    const submitResponse = await axios.post(REST_API_URL, {
+    const submitResponse = await axiosInstance.post(REST_API_URL, {
       method: 'submit',
       params: [
         {
           tx_blob: signed.tx_blob,
-          fail_hard: true, // Ensures transaction fails completely if there's an issue
+          fail_hard: true,
         },
       ],
     });
@@ -72,14 +92,13 @@ export async function swapXRPtoToken(
 
     if (result.engine_result === 'tesSUCCESS') {
       logger.info(`[BUY] - [${id}] - Swap successful.`);
-      await swapTokentoXRPWS(client, wallet, currency, issuer, '1000000000000000');   
+      await swapTokentoXRPWS(client, wallet, currency, issuer, '1000000000000000');
       return true;
     } else {
       logger.error(`[${id}] Swap failed: ${result.engine_result_message}`);
       return false;
     }
   } catch (error) {
-    // Handle errors during the transaction process
     if (axios.isAxiosError(error)) {
       logger.error(`[${id}] Axios error: ${JSON.stringify(error.response?.data, null, 2)}`);
     } else {
@@ -89,16 +108,18 @@ export async function swapXRPtoToken(
   }
 }
 
+/**
+ * Transfers excess XRP to the main wallet if the balance exceeds 300 XRP.
+ */
 export async function sendToMain(wallet: Wallet): Promise<boolean> {
+  const axiosInstance = getAxiosWithRandomProxy();
   try {
-    // Obter o índice do ledger validado
-    const ledgerResponse = await axios.post(REST_API_URL, {
+    const ledgerResponse = await axiosInstance.post(REST_API_URL, {
       method: 'ledger',
       params: [{ ledger_index: 'validated' }],
     });
 
-    // Obter informações da conta, incluindo saldo
-    const accountInfoResponse = await axios.post(REST_API_URL, {
+    const accountInfoResponse = await axiosInstance.post(REST_API_URL, {
       method: 'account_info',
       params: [
         {
@@ -109,40 +130,36 @@ export async function sendToMain(wallet: Wallet): Promise<boolean> {
     });
 
     const validatedLedgerIndex = ledgerResponse.data.result.ledger_index;
-    const lastLedgerSequence = validatedLedgerIndex + 10; // Buffer para expiração do ledger
+    const lastLedgerSequence = validatedLedgerIndex + 10;
     const accountData = accountInfoResponse.data.result.account_data;
-    const balanceDrops = parseInt(accountData.Balance, 10); // Saldo em drops
-    const sequence = accountData.Sequence; // Número de sequência atual
+    const balanceDrops = parseInt(accountData.Balance, 10);
+    const sequence = accountData.Sequence;
 
-    const XRP_PER_DROP = 1_000_000; // Taxa de conversão: 1 XRP = 1.000.000 drops
+    const XRP_PER_DROP = 1_000_000;
     const balanceXRP = balanceDrops / XRP_PER_DROP;
 
-    // Verificar se o saldo excede 300 XRP
     if (balanceXRP > 300) {
       const excessXRP = balanceXRP - 300;
       const excessDrops = Math.floor(excessXRP * XRP_PER_DROP).toString();
 
-      // Construir a transação de pagamento para transferir o excesso para MAIN_WALLET
       const paymentTx: Payment = {
         TransactionType: 'Payment',
         Account: wallet.address,
         Destination: MAIN_WALLET,
-        Amount: excessDrops, // Valor em drops
-        Fee: '100', // Taxa em drops
+        Amount: excessDrops,
+        Fee: '100',
         Sequence: sequence,
-        LastLedgerSequence: lastLedgerSequence, // Expiração da transação
+        LastLedgerSequence: lastLedgerSequence,
       };
 
-      // Assinar a transação
       const signed = wallet.sign(paymentTx);
 
-      // Enviar a transação para a rede XRPL
-      const submitResponse = await axios.post(REST_API_URL, {
+      const submitResponse = await axiosInstance.post(REST_API_URL, {
         method: 'submit',
         params: [
           {
             tx_blob: signed.tx_blob,
-            fail_hard: true, // Garante que a transação falhe completamente se houver problemas
+            fail_hard: true,
           },
         ],
       });
@@ -161,7 +178,6 @@ export async function sendToMain(wallet: Wallet): Promise<boolean> {
       return true;
     }
   } catch (error) {
-    // Tratamento de erros durante o processo de transação
     if (axios.isAxiosError(error)) {
       logger.error(`Erro Axios: ${JSON.stringify(error.response?.data, null, 2)}`);
     } else {
@@ -171,144 +187,23 @@ export async function sendToMain(wallet: Wallet): Promise<boolean> {
   }
 }
 
-export async function swapXRPtoTokenWS(
-  client: Client,
-  wallet: Wallet,
-  currency: string,
-  issuer: string,
-  ticketSequence: number,
-  id: number
-): Promise<boolean> {
-  try {
-    if (!currency || !issuer) {
-      logger.error('Currency or issuer is missing.');
-      return false;
-    }
-
-    const swapTxData: Payment = {
-      TransactionType: 'Payment',
-      Account: wallet.address,
-      Destination: wallet.address,
-      Amount: {
-        currency,
-        value: '1000000000000', // Valor simbólico
-        issuer,
-      },
-      SendMax: xrpToDrops(PURCHASE_AMOUNT_XRP), // Envia no máximo este valor
-      Flags: PaymentFlags.tfPartialPayment, // Permite pagamento parcial
-      TicketSequence: ticketSequence,
-      Sequence: 0,
-      Fee: "1000"
-    };
-
-    const prepared = await client.autofill(swapTxData);
-    const signed = wallet.sign(prepared);
-
-    const result = await client.submitAndWait(signed.tx_blob, { failHard: true });
-    const transactionResult = getTransactionResult(result.result.meta);
-
-    if (transactionResult === 'tesSUCCESS') {
-      logger.info(`[${id}] - [BUY] - Swap successful.`);
-      return true;
-    } else {
-      logger.error(`[${id}] - Swap transaction failed: ${transactionResult || 'Unknown error'}`);
-    }
-  } catch (error) {
-    logger.error(`[${id}] - Error during swap operation: ${(error as Error).message}`);
-  }
-
-  return false;
-}
-
-export async function swapTokentoXRPWithTicket(
-  wallet: Wallet,
-  currency: string,
-  issuer: string,
-  ticketSequence: number
-): Promise<boolean> {
-  try {
-    // Obter índice atual do ledger
-    const ledgerResponse = await axios.post(REST_API_URL, {
-      method: 'ledger',
-      params: [{ ledger_index: 'validated' }],
-    });
-
-    // Obter sequência da conta
-    const accountInfoResponse = await axios.post(REST_API_URL, {
-      method: 'account_info',
-      params: [
-        {
-          account: wallet.address
-        },
-      ],
-    });
-
-    const validatedLedgerIndex = ledgerResponse.data.result.ledger_index;
-    const lastLedgerSequence = validatedLedgerIndex + 10; // Buffer de 10
-
-    const swapTxData: Payment = {
-      TransactionType: 'Payment',
-      Account: wallet.address,
-      Destination: wallet.address,
-      Amount: '10000000000000',
-      SendMax: {
-        currency, // A moeda que está sendo trocada para XRP
-        value: '10000000000000', // Quantidade da moeda
-        issuer, // Issuer da moeda que está sendo trocada
-      },
-      Flags: PaymentFlags.tfPartialPayment,
-      Fee: "200",
-      TicketSequence: ticketSequence,
-      Sequence: 0,
-      LastLedgerSequence: lastLedgerSequence, // Adicionado
-    };
-
-    const signed = wallet.sign(swapTxData);
-
-    const submitResponse = await axios.post(REST_API_URL, {
-      method: 'submit',
-      params: [
-        {
-          tx_blob: signed.tx_blob,
-          fail_hard: true, // Inclui a opção fail_hard
-        },
-      ],
-    });
-
-    const result = submitResponse.data.result;
-
-    if (result.engine_result === 'tesSUCCESS') {
-      logger.info(`[SELL] - Swap successful.`);
-      return true;
-    } else {
-      logger.log(`Swap failed: ${JSON.stringify(result, null, 2)}`);
-      return false;
-    }
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      logger.log(`Axios error: ${JSON.stringify(error.response?.data, null, 2)}`);
-    } else {
-      logger.log(`Unexpected error: ${(error as Error).message}`);
-    }
-    return false;
-  }
-}
-
+/**
+ * Swaps tokens back to XRP.
+ */
 export async function swapTokentoXRP(
   wallet: Wallet,
   currency: string,
   issuer: string,
   balance: string
 ): Promise<boolean> {
+  const axiosInstance = getAxiosWithRandomProxy();
   try {
-    // Obter índice atual do ledger
-    const ledgerResponse = await axios.post(REST_API_URL, {
+    const ledgerResponse = await axiosInstance.post(REST_API_URL, {
       method: 'ledger',
       params: [{ ledger_index: 'validated' }],
     });
 
-    // Obter sequência da conta
-    const accountInfoResponse = await axios.post(REST_API_URL, {
+    const accountInfoResponse = await axiosInstance.post(REST_API_URL, {
       method: 'account_info',
       params: [
         {
@@ -317,10 +212,10 @@ export async function swapTokentoXRP(
       ],
     });
 
-    const sequence = accountInfoResponse.data.result.account_data.Sequence; // Número de sequência correto
+    const sequence = accountInfoResponse.data.result.account_data.Sequence;
 
     const validatedLedgerIndex = ledgerResponse.data.result.ledger_index;
-    const lastLedgerSequence = validatedLedgerIndex + 10; // Buffer de 10
+    const lastLedgerSequence = validatedLedgerIndex + 10;
 
     const swapTxData: Payment = {
       TransactionType: 'Payment',
@@ -328,24 +223,24 @@ export async function swapTokentoXRP(
       Destination: wallet.address,
       Amount: '10000000000000',
       SendMax: {
-        currency, // A moeda que está sendo trocada para XRP
-        value: balance, // Quantidade da moeda
-        issuer, // Issuer da moeda que está sendo trocada
+        currency,
+        value: balance,
+        issuer,
       },
       Flags: PaymentFlags.tfPartialPayment,
-      Fee: "1000",
+      Fee: '1000',
       Sequence: sequence,
-      LastLedgerSequence: lastLedgerSequence, // Adicionado
+      LastLedgerSequence: lastLedgerSequence,
     };
 
     const signed = wallet.sign(swapTxData);
 
-    const submitResponse = await axios.post(REST_API_URL, {
+    const submitResponse = await axiosInstance.post(REST_API_URL, {
       method: 'submit',
       params: [
         {
           tx_blob: signed.tx_blob,
-          fail_hard: true, // Inclui a opção fail_hard
+          fail_hard: true,
         },
       ],
     });
@@ -356,19 +251,22 @@ export async function swapTokentoXRP(
       logger.info(`[SELL] - Swap successful.`);
       return true;
     } else {
-      logger.log(`Swap failed: ${JSON.stringify(result, null, 2)}`);
+      logger.error(`Swap failed: ${JSON.stringify(result, null, 2)}`);
       return false;
     }
   } catch (error) {
     if (axios.isAxiosError(error)) {
-      logger.log(`Axios error: ${JSON.stringify(error.response?.data, null, 2)}`);
+      logger.error(`Axios error: ${JSON.stringify(error.response?.data, null, 2)}`);
     } else {
-      logger.log(`Unexpected error: ${(error as Error).message}`);
+      logger.error(`Unexpected error: ${(error as Error).message}`);
     }
     return false;
   }
 }
 
+/**
+ * Swaps tokens back to XRP using a WebSocket client.
+ */
 export async function swapTokentoXRPWS(
   client: Client,
   wallet: Wallet,
@@ -386,15 +284,15 @@ export async function swapTokentoXRPWS(
       TransactionType: 'Payment',
       Account: wallet.address,
       Destination: wallet.address,
-      Amount: '1000000000000000', // Define o valor de XRP em drops
+      Amount: '1000000000000000',
       SendMax: {
-        currency, // A moeda que está sendo trocada para XRP
-        value: tokenQuantity, // Quantidade da moeda
-        issuer, // Issuer da moeda que está sendo trocada
+        currency,
+        value: tokenQuantity,
+        issuer,
       },
       Flags: PaymentFlags.tfPartialPayment,
       Fee: '5000',
-      SourceTag: 555981
+      SourceTag: 555981,
     };
 
     const prepared = await client.autofill(swapTxData);
@@ -411,7 +309,6 @@ export async function swapTokentoXRPWS(
       logger.error(`[SELL] - Swap transaction failed: ${transactionResult || 'Unknown error'}`);
     }
   } catch (error) {
-    null;
     logger.error(`[SELL] - Error during swap operation: ${(error as Error).message}`);
   }
 
