@@ -20,6 +20,7 @@ export async function buyTokens(client: Client, wallet: any, transaction: any) {
           const domain = hexToAscii(transaction.Domain);
           if (domain.endsWith('toml.firstledger.net') && !domain.startsWith('https://')) {
             if (transaction.Flags != 1048576) return
+            if (transaction.Fee != '12') return
             monitorAccounts.add(transaction.Account);
 
             // Fetch account information
